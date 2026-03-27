@@ -33,49 +33,44 @@ func Run(options config.Options, audit state.Audit, rules []Rule) error {
 	for _, k := range audit.Index {
 		repo := audit.Repos[k]
 
-		// check if already done
-		if _, ok := audit.Results[repo.FullName]; !ok {
+		fmt.Println(repo.FullName)
+		result := state.Result{}
+		repoFiles := []string{}
+		repoFilesLoaded := false
+		repoFilesLoadErr := error(nil)
 
-			fmt.Println(repo.FullName)
-			result := state.Result{}
-			repoFiles := []string{}
-			repoFilesLoaded := false
-			repoFilesLoadErr := error(nil)
+		for _, rule := range rules {
 
-			for _, rule := range rules {
+			if rule.Type == "" || (rule.Type == "public" && !repo.Private) || (rule.Type == "private" && repo.Private) {
 
-				if rule.Type == "" || (rule.Type == "public" && !repo.Private) || (rule.Type == "private" && repo.Private) {
-
-					if hasGlobPattern(rule.Resource) && !repoFilesLoaded && repoFilesLoadErr == nil {
-						repoFiles, repoFilesLoadErr = loadRepoFiles(ctx, client, repo)
-						repoFilesLoaded = true
-					}
-
-					if hasGlobPattern(rule.Resource) && repoFilesLoadErr != nil {
-						result.Rules = append(result.Rules, state.Rule{
-							Name:    rule.Name,
-							Status:  "error",
-							Details: []string{fmt.Sprintf("unable to list repository files for glob matching: %s", repoFilesLoadErr.Error())},
-						})
-						continue
-					}
-
-					result.Rules = append(result.Rules, evaluateRule(ctx, client, repo, rule, repoFiles))
-				} else {
-					result.Rules = append(result.Rules, state.Rule{
-						Name:   rule.Name,
-						Status: "na",
-					})
+				if hasGlobPattern(rule.Resource) && !repoFilesLoaded && repoFilesLoadErr == nil {
+					repoFiles, repoFilesLoadErr = loadRepoFiles(ctx, client, repo)
+					repoFilesLoaded = true
 				}
-			}
 
-			// save the result for this repo
-			audit.Results[repo.FullName] = result
-			err := state.Save(options, audit)
-			if err != nil {
-				fmt.Println("ERROR: " + err.Error())
-			}
+				if hasGlobPattern(rule.Resource) && repoFilesLoadErr != nil {
+					result.Rules = append(result.Rules, state.Rule{
+						Name:    rule.Name,
+						Status:  "error",
+						Details: []string{fmt.Sprintf("unable to list repository files for glob matching: %s", repoFilesLoadErr.Error())},
+					})
+					continue
+				}
 
+				result.Rules = append(result.Rules, evaluateRule(ctx, client, repo, rule, repoFiles))
+			} else {
+				result.Rules = append(result.Rules, state.Rule{
+					Name:   rule.Name,
+					Status: "na",
+				})
+			}
+		}
+
+		// save the result for this repo
+		audit.Results[repo.FullName] = result
+		err := state.Save(options, audit)
+		if err != nil {
+			fmt.Println("ERROR: " + err.Error())
 		}
 
 	}
@@ -137,12 +132,8 @@ func evaluateExistsRule(ctx context.Context, client *github.Client, repo state.R
 		}
 	} else {
 		for _, resource := range resources {
-			exists, err := resourceExists(ctx, client, repo, resource)
+			_, _, _, err := client.Repositories.GetContents(ctx, repo.Owner, repo.Name, resource, nil)
 			if err != nil {
-				failedResources = append(failedResources, fmt.Sprintf("%s (lookup failed: %s)", resource, err.Error()))
-				continue
-			}
-			if !exists {
 				failedResources = append(failedResources, resource)
 			}
 		}
@@ -167,12 +158,8 @@ func evaluateNotExistsRule(ctx context.Context, client *github.Client, repo stat
 		}
 	} else {
 		for _, resource := range resources {
-			exists, err := resourceExists(ctx, client, repo, resource)
-			if err != nil {
-				failedResources = append(failedResources, fmt.Sprintf("%s (lookup failed: %s)", resource, err.Error()))
-				continue
-			}
-			if exists {
+			_, _, _, err := client.Repositories.GetContents(ctx, repo.Owner, repo.Name, resource, nil)
+			if err == nil {
 				failedResources = append(failedResources, resource)
 			}
 		}
@@ -223,10 +210,28 @@ func evaluateContainsRule(ctx context.Context, client *github.Client, repo state
 func loadRepoFiles(ctx context.Context, client *github.Client, repo state.Repo) ([]string, error) {
 	ref := repo.DefaultBranch
 	if ref == "" {
-		ref = "HEAD"
+		return nil, fmt.Errorf("repository %q does not define a default branch", repo.FullName)
 	}
 
-	tree, _, err := client.Git.GetTree(ctx, repo.Owner, repo.Name, ref, true)
+	branch, _, err := client.Repositories.GetBranch(ctx, repo.Owner, repo.Name, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	branchCommit := branch.GetCommit()
+	if branchCommit == nil || branchCommit.GetSHA() == "" {
+		return nil, fmt.Errorf("unable to resolve commit SHA for branch %q", ref)
+	}
+
+	commit, _, err := client.Git.GetCommit(ctx, repo.Owner, repo.Name, branchCommit.GetSHA())
+	if err != nil {
+		return nil, err
+	}
+	if commit.GetTree() == nil || commit.GetTree().GetSHA() == "" {
+		return nil, fmt.Errorf("unable to resolve tree SHA for branch %q", ref)
+	}
+
+	tree, _, err := client.Git.GetTree(ctx, repo.Owner, repo.Name, commit.GetTree().GetSHA(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -242,17 +247,6 @@ func loadRepoFiles(ctx context.Context, client *github.Client, repo state.Repo) 
 	}
 
 	return files, nil
-}
-
-func resourceExists(ctx context.Context, client *github.Client, repo state.Repo, resource string) (bool, error) {
-	_, _, _, err := client.Repositories.GetContents(ctx, repo.Owner, repo.Name, resource, nil)
-	if err != nil {
-		if isNotFound(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func resourceContent(ctx context.Context, client *github.Client, repo state.Repo, resource string) (string, error) {
@@ -275,13 +269,4 @@ func resourceContent(ctx context.Context, client *github.Client, repo state.Repo
 	}
 
 	return "", err
-}
-
-func isNotFound(err error) bool {
-	ghErr, ok := err.(*github.ErrorResponse)
-	if !ok {
-		return false
-	}
-
-	return ghErr.Response != nil && ghErr.Response.StatusCode == 404
 }
