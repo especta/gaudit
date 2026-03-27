@@ -25,6 +25,11 @@ func Results(options config.Options) {
 		for _, rule := range audit.Results[r].Rules {
 			if rule.Status == "error" || options.Args["verbose"] == "true" {
 				fmt.Println("  [" + rule.Status + "] " + rule.Name)
+				if options.Args["verbose"] == "true" {
+					for _, detail := range rule.Details {
+						fmt.Println("    - " + detail)
+					}
+				}
 			}
 		}
 	}

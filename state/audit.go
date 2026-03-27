@@ -46,6 +46,7 @@ type Result struct {
 }
 
 type Rule struct {
-	Name   string
-	Status string
+	Name    string
+	Status  string
+	Details []string `json:",omitempty"`
 }

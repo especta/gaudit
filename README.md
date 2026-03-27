@@ -73,6 +73,12 @@ Example:
   type: public
 ```
 
+`resource` also supports glob patterns (for example `docs/**/*.md`).
+
+When a glob is used, a rule is marked as `success` only if all matched
+resources pass validation. If any matched resource fails, the rule is `error`.
+Use `gaudit results --verbose` to see the failing resource paths.
+
 
 ### Releases
 
