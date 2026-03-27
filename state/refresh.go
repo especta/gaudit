@@ -49,6 +49,14 @@ func Refresh(options config.Options) (audit Audit, err error) {
 				log.Printf("\n\n%+v\n\n", r)
 			}
 
+			// skip excluded repositories
+			if isRepoExcluded(*r.FullName, *r.Name, options.ExcludeRepos) {
+				if options.Debug {
+					log.Printf("Skipping excluded repo: %s", *r.FullName)
+				}
+				continue
+			}
+
 			// cleanup some values
 			description := ""
 			if r.Description != nil {

@@ -59,6 +59,9 @@ func main() {
 		options.Append = os.Getenv("GAUDIT_APPEND")
 	}
 
+	// Excluded Repositories
+	options.ExcludeRepos = config.ParseListEnv(os.Getenv("GAUDIT_EXCLUDE_REPOS"))
+
 	// Debug
 	options.Debug = false
 	if os.Getenv("GAUDIT_DEBUG") == "true" {

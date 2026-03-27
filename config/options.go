@@ -13,6 +13,7 @@ type Options struct {
 	Policy       string
 	Rules        string
 	Append       string
+	ExcludeRepos []string
 	Debug        bool
 	Args         map[string]string
 }

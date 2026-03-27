@@ -35,6 +35,8 @@ gaudit
 
 `GAUDIT_APPEND` - Append file for annotating (defaults to append.yml)
 
+`GAUDIT_EXCLUDE_REPOS` - Exclude repositories from `update` (comma, semicolon, or newline separated; accepts `org/repo` or `repo`)
+
 `GAUDIT_DEBUG` - Set debug mode (defaults to false)
 
 
