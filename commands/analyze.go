@@ -18,6 +18,7 @@ func Analyze(options config.Options) {
 	audit, err := state.Load(options.Storage)
 	if err != nil {
 		fmt.Println("ERROR: " + err.Error())
+		return
 	}
 	fmt.Println("Loaded")
 
@@ -26,6 +27,7 @@ func Analyze(options config.Options) {
 	rules, err := analyze.Load(options)
 	if err != nil {
 		fmt.Println("ERROR: " + err.Error())
+		return
 	}
 	fmt.Println("Loaded")
 
@@ -34,6 +36,7 @@ func Analyze(options config.Options) {
 	err = analyze.Validate(options, rules)
 	if err != nil {
 		fmt.Println("ERROR: " + err.Error())
+		return
 	}
 	fmt.Println("Validated")
 
@@ -42,6 +45,7 @@ func Analyze(options config.Options) {
 	err = analyze.Run(options, audit, rules)
 	if err != nil {
 		fmt.Println("ERROR: " + err.Error())
+		return
 	}
 	fmt.Println("Complete")
 
